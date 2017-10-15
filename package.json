@@ -1,6 +1,6 @@
 {
 	"name": "qtgate_at_opn",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"license": "MIT",
 	"description": "@OPN server and client",
 	"scripts": {
@@ -16,7 +16,7 @@
 		"email": "info@QTGate.com"
 	},
 	"bugs": {
-		"url": "https://github.com/QTGate/QTGate-Desktop-Client/issues"
+		"url": "https://github.com/QTGate/atOPN/issues"
 	},
 	"homepage": "https://www.qtgate.com",
 	"dependencies": {
