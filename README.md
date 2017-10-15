@@ -19,6 +19,10 @@ This is QTGATE @OPN module include server and client
 
 npm i qtgate_at_opn
 
+## SETUP
+
+setup.js
+
 ## server
 
 npm run server
