@@ -1,6 +1,6 @@
 {
 	"name": "qtgate_at_opn",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"license": "MIT",
 	"description": "@OPN server and client",
 	"scripts": {

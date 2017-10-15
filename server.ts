@@ -22,11 +22,11 @@ import * as fs from 'fs'
 import * as Crypto from 'crypto'
 import * as Async from 'async'
 import * as Stream from 'stream'
-
 import * as HttpProxy from './httpProxy'
 import * as Compress from './compress'
 import * as StreamFun from './streamFunction'
-import DataCount from './dataCount'
+import * as setup from './setup'
+import * as imapClass from './imapClass'
 
 const MaxAllowedTimeOut = 1000 * 60 * 5
 
@@ -76,7 +76,7 @@ export class ssModeV1 {
 	private logFileName = `qtgate_httpServer`
     private serverNet: Net.Server = null
 
-	constructor ( private clientPool: Map < string, DataCount > , private port: number ) {
+	constructor ( private password, private port: number ) {
 
         this.serverNet = Net.createServer ( socket => {
 
@@ -89,25 +89,13 @@ export class ssModeV1 {
 					return console.log (`serverNet.getConnections ERROR: `, err )
 				return console.log (`new ssMode connect [${ id }] opened connect=[${ count }]`)
 			})
-			
-            const container = clientPool.get ( remoteAddress )
-            if ( ! container ) {
-				console.log (`remoteAddress[ ${remoteAddress} ] have not allow! stop socket!`)
-                saveLog ( `remoteAddress[ ${remoteAddress} ] have not allow! stop socket!`, )
-                return socket.end ()
-            }
+		
 
             const streamFunBlock = new StreamFun.blockRequestData ( true, MaxAllowedTimeOut )
             
-            const streamDecrypt = new Compress.decryptStream ( container.password, ( data: Buffer ) => {
-				return container.HashCheck ( data )
-			}, n => {
-				return container.countData ( n, true )
-			})
+            const streamDecrypt = new Compress.SdecryptStream ( password )
 
-            const streamEncrypt = new Compress.encryptStream ( container.password, 500, n => {
-				return container.countData ( n, false )
-			}, null, () => {
+            const streamEncrypt = new Compress.SencryptStream ( password, 500, null, () => {
 
             	const firstConnect = new FirstConnect ( socket, streamEncrypt )
 
@@ -142,21 +130,20 @@ export class ssModeV1 {
 
             socket.once ( 'error', err => {
 				console.log (`socket.on ERROR!`)
-                socket.end ()
-                return saveLog ( 'HTTP on ERROR:' + err.message )
+                return socket.end ()
+                
             })
 
         })
         
         this.serverNet.on ( 'error', err => {
-			console.log ( 'ssModeV1 serverNet.on error:' + err.message )
-            return saveLog ( 'ssModeV1 serverNet.on error:' + err.message )
+			
+            return console.log ( 'ssModeV1 serverNet.on error:' + err.message )
         })
 
         this.serverNet.listen ( port, null, 512, () => {
             const log = `SS mode start up listening on [${ port }]`
-            console.log ( log )
-            return saveLog ( log )
+            return console.log ( log )
         })
 	}
 }
@@ -164,7 +151,7 @@ export class ssModeV1 {
 
 class FirstConnect extends Stream.Writable {
 	private socket: Net.Socket = null
-	constructor ( private clientSocket: Net.Socket, private encrypt: Compress.encryptStream ) { super ()}
+	constructor ( private clientSocket: Net.Socket, private encrypt: Compress.SencryptStream ) { super ()}
     
 	public _write ( chunk: Buffer, encode, cb ) {
 		if ( ! this.socket ) {
@@ -214,23 +201,4 @@ class FirstConnect extends Stream.Writable {
 	}
 }
 
-const logDir = '/var/log/vpn.email'
-
-fs.access ( logDir, fs.constants.R_OK | fs.constants.W_OK, err => {
-	if ( err ) {
-		fs.mkdir ( logDir, err1 => {
-			if ( err1 ) {
-				console.log ( `${ new Date ().toString ()} vpn.email.server.gfw can't mkdir log path!`)
-				return process.exit (1)
-            }
-            saveLog (`**************************** strat up ****************************\n`)
-		})
-	}
-})
-
-const saveLog = ( _log: string ) => {
-	const log = new Date ().toISOString () + `: ${ _log }\n`
-	fs.appendFile ( `${logDir}/qtGateServer.log`, log, { encoding: 'utf8' }, err => {
-		console.log ( log )
-	})
-}
+const server = new imapClass.imapServerControl ( setup.imapData )
