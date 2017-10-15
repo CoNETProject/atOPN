@@ -18,7 +18,6 @@ This is QTGATE @OPN module include server and client
 ## INSTALL
 
 npm i qtgate_at_opn
-npm i
 
 ## server
 
