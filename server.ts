@@ -1,0 +1,236 @@
+/*!
+ * Copyright 2017 Vpn.Email network security technology Canada Inc. All Rights Reserved.
+ *
+ * Vpn.Email network technolog Canada Ltd.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import * as Net from 'net'
+import * as Http from 'http'
+import * as Dns from 'dns'
+import * as fs from 'fs'
+import * as Crypto from 'crypto'
+import * as Async from 'async'
+import * as Stream from 'stream'
+
+import * as HttpProxy from './httpProxy'
+import * as Compress from './compress'
+import * as StreamFun from './streamFunction'
+import DataCount from './dataCount'
+
+const MaxAllowedTimeOut = 1000 * 60 * 5
+
+const otherRespon = ( body: string| Buffer, _status: number ) => {
+	const Ranges = ( _status === 200 ) ? 'Accept-Ranges: bytes\r\n' : ''
+	const Content = ( _status === 200 ) ? `Content-Type: text/plain; charset=utf-8\r\n` : 'Content-Type: text/html\r\n'
+	const headers = `Server: nginx/1.6.2\r\n`
+					+ `Date: ${ new Date ().toUTCString()}\r\n`
+					+ Content
+					+ `Content-Length: ${ body.length }\r\n`
+					+ `Connection: keep-alive\r\n`
+					+ `Vary: Accept-Encoding\r\n`
+					//+ `Transfer-Encoding: chunked\r\n`
+					+ '\r\n'
+
+	const status = _status === 200 ? 'HTTP/1.1 200 OK\r\n' : 'HTTP/1.1 404 Not Found\r\n'
+	return status + headers + body
+}
+
+const return404 = () => {
+	const kkk = '<html>\r\n<head><title>404 Not Found</title></head>\r\n<body bgcolor="white">\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx/1.6.2</center>\r\n</body>\r\n</html>\r\n'
+	return otherRespon ( Buffer.from ( kkk ), 404 )
+}
+
+const dnsLookup = ( hostName: string, CallBack ) => {
+	console.log (`on dnsLookup: hostName = [${ hostName }]`)
+	return Dns.lookup ( hostName, { all: true }, ( err, data ) => {
+		if ( err )
+			return CallBack ( err )
+		const _buf = Buffer.from ( JSON.stringify ( data ))
+		return CallBack ( null, _buf )
+	})
+}
+
+class listen extends Stream.Transform {
+	constructor ( private headString: string ) { super ()}
+	public _transform ( chunk: Buffer, encode, cb ) {
+
+		console.log ( this.headString )
+		console.log ( chunk.toString ('hex'))
+		console.log ( this.headString )
+		return cb ( null, chunk )
+	}
+}
+
+export class ssModeV1 {
+	private logFileName = `qtgate_httpServer`
+    private serverNet: Net.Server = null
+
+	constructor ( private clientPool: Map < string, DataCount > , private port: number ) {
+
+        this.serverNet = Net.createServer ( socket => {
+
+            const _remoteAddress = socket.remoteAddress
+            const remoteAddress = _remoteAddress.split ( ':' ).length > 2 ? _remoteAddress.split ( ':' )[3] : _remoteAddress
+
+			const id = `[${ remoteAddress }]:[${ socket.remotePort }]`
+			this.serverNet.getConnections (( err, count ) => {
+				if ( err )
+					return console.log (`serverNet.getConnections ERROR: `, err )
+				return console.log (`new ssMode connect [${ id }] opened connect=[${ count }]`)
+			})
+			
+            const container = clientPool.get ( remoteAddress )
+            if ( ! container ) {
+				console.log (`remoteAddress[ ${remoteAddress} ] have not allow! stop socket!`)
+                saveLog ( `remoteAddress[ ${remoteAddress} ] have not allow! stop socket!`, )
+                return socket.end ()
+            }
+
+            const streamFunBlock = new StreamFun.blockRequestData ( true, MaxAllowedTimeOut )
+            
+            const streamDecrypt = new Compress.decryptStream ( container.password, ( data: Buffer ) => {
+				return container.HashCheck ( data )
+			}, n => {
+				return container.countData ( n, true )
+			})
+
+            const streamEncrypt = new Compress.encryptStream ( container.password, 500, n => {
+				return container.countData ( n, false )
+			}, null, () => {
+
+            	const firstConnect = new FirstConnect ( socket, streamEncrypt )
+
+                firstConnect.once ( 'error', err => {
+                    console.log ( `firstConnect.on ERROR:`, err.message )
+                    return socket.end ( return404 ())
+				})
+				
+				socket.pipe ( streamFunBlock ).pipe ( streamDecrypt ).pipe ( firstConnect )
+				
+            })
+            
+            streamFunBlock.once ( 'error', err => {
+                console.log ( `streamFunBlock.on ERROR:`, err.message )
+                if ( /404/.test ( err.message)) 
+                    return socket.end ( return404 ())
+                return socket.end ()
+            })
+
+            socket.once ( 'end', () => {
+				console.log (` socket.once`)
+                return this.serverNet.getConnections (( err, count ) => {
+                    console.log ( id, 'socket.on END! connected = ', count )
+                })
+                
+            })
+
+            socket.once ( 'unpipe', src => {
+				console.log (`socket.once unpipe!`)
+                return socket.end ()
+            })
+
+            socket.once ( 'error', err => {
+				console.log (`socket.on ERROR!`)
+                socket.end ()
+                return saveLog ( 'HTTP on ERROR:' + err.message )
+            })
+
+        })
+        
+        this.serverNet.on ( 'error', err => {
+			console.log ( 'ssModeV1 serverNet.on error:' + err.message )
+            return saveLog ( 'ssModeV1 serverNet.on error:' + err.message )
+        })
+
+        this.serverNet.listen ( port, null, 512, () => {
+            const log = `SS mode start up listening on [${ port }]`
+            console.log ( log )
+            return saveLog ( log )
+        })
+	}
+}
+
+
+class FirstConnect extends Stream.Writable {
+	private socket: Net.Socket = null
+	constructor ( private clientSocket: Net.Socket, private encrypt: Compress.encryptStream ) { super ()}
+    
+	public _write ( chunk: Buffer, encode, cb ) {
+		if ( ! this.socket ) {
+			const _data = chunk.toString ()
+			try {
+				const data = JSON.parse ( _data )
+				console.log ( data )
+				if ( data.hostName && data.hostName.length ) {
+
+					return dnsLookup ( data.hostName, ( err, data ) => {
+						if ( err ) {
+							return cb ( err )
+						}
+
+						this.encrypt.pipe ( this.clientSocket )
+						this.encrypt.end ( data )
+					})
+				}
+				if ( data.uuid ) {
+
+					return this.socket = Net.connect ({ port: data.port, host: data.host }, () => {
+						this.socket.on ( 'error', err => {
+							console.log ( 'FirstConnect socket on error!', err.message )
+							this.end ()
+						})
+						this.socket.pipe ( this.encrypt ).pipe ( this.clientSocket )
+						
+						this.socket.write ( Buffer.from ( data.buffer, 'base64' ))
+						return cb ()
+					})
+					
+				}
+				
+				return cb ( new Error ( 'unknow connect!' ))
+			} catch ( e ) {
+				console.log (`FirstConnect JSON.parse [${ _data }]catch error:` , e )
+				return cb ( e )
+			}
+		}
+
+		if ( this.socket.writable ) {
+			this.socket.write ( chunk )
+			return cb ()
+		}
+
+		return cb ( new Error ( 'FirstConnect socket.writable=false' ))
+	}
+}
+
+const logDir = '/var/log/vpn.email'
+
+fs.access ( logDir, fs.constants.R_OK | fs.constants.W_OK, err => {
+	if ( err ) {
+		fs.mkdir ( logDir, err1 => {
+			if ( err1 ) {
+				console.log ( `${ new Date ().toString ()} vpn.email.server.gfw can't mkdir log path!`)
+				return process.exit (1)
+            }
+            saveLog (`**************************** strat up ****************************\n`)
+		})
+	}
+})
+
+const saveLog = ( _log: string ) => {
+	const log = new Date ().toISOString () + `: ${ _log }\n`
+	fs.appendFile ( `${logDir}/qtGateServer.log`, log, { encoding: 'utf8' }, err => {
+		console.log ( log )
+	})
+}
