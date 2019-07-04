@@ -1,28 +1,32 @@
 {
-	"name": "qtgate_at_opn",
-	"version": "0.1.4",
-	"license": "MIT",
-	"description": "@OPN server and client",
-	"scripts": {
-		"server": "node ./server",
-		"client": "node ./client"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/QTGate/atOPN.git"
-	},
-	"author": {
-		"name": "QTGate Systems Inc.",
-		"email": "info@QTGate.com"
-	},
-	"bugs": {
-		"url": "https://github.com/QTGate/atOPN/issues"
-	},
-	"homepage": "https://www.qtgate.com",
-	"dependencies": {
-		"async": "^2.5.0",
-		"node-uuid": "^1.4.8",
-		"nodemailer": "^4.2.0",
-		"portastic": "^1.0.1"
-	}
+  "name": "qtgate_at_opn",
+  "version": "0.1.4",
+  "license": "MIT",
+  "description": "@OPN server and client",
+  "scripts": {
+    "server": "node ./server",
+    "client": "node ./client",
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QTGate/atOPN.git"
+  },
+  "author": {
+    "name": "QTGate Systems Inc.",
+    "email": "info@QTGate.com"
+  },
+  "bugs": {
+    "url": "https://github.com/QTGate/atOPN/issues"
+  },
+  "homepage": "https://www.qtgate.com",
+  "dependencies": {
+    "async": "^2.5.0",
+    "node-uuid": "^1.4.8",
+    "nodemailer": "^4.2.0",
+    "portastic": "^1.0.1",
+    "snyk": "^1.189.0"
+  },
+  "snyk": true
 }
