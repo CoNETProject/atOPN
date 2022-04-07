@@ -20,7 +20,7 @@
 	},
 	"homepage": "https://www.qtgate.com",
 	"dependencies": {
-		"async": "^2.5.0",
+		"async": "^3.2.2",
 		"node-uuid": "^1.4.8",
 		"nodemailer": "^4.2.0",
 		"portastic": "^1.0.1"
